@@ -1,0 +1,46 @@
+name: Action Version Check
+description: Check workflow dependencies for published releases and report available updates.
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  upstream-token:
+    description: Optional token with Contents read access to private upstream repositories.
+    required: false
+
+outputs:
+  current:
+    description: Number of references already on the latest applicable release commit.
+    value: ${{ steps.check.outputs.current }}
+  updates:
+    description: Number of references with a newer published release available.
+    value: ${{ steps.check.outputs.updates }}
+  unchecked:
+    description: Number of references or files the action could not check.
+    value: ${{ steps.check.outputs.unchecked }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: '3.14'
+    - id: check
+      name: Check workflow action versions
+      shell: bash
+      env:
+        AVC_REPOSITORY_TOKEN: ${{ github.token }}
+        AVC_UPSTREAM_TOKEN: ${{ github.event_name != 'pull_request_target' && inputs.upstream-token || '' }}
+      run: |
+        temp_root="$(cd "$RUNNER_TEMP" && pwd -P)"
+        venv_dir="$(mktemp -d "$temp_root/action-version-check.XXXXXX")"
+        python -I -m venv "$venv_dir"
+        venv_python="$venv_dir/bin/python"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          venv_python="$venv_dir/Scripts/python.exe"
+        fi
+        env -u AVC_REPOSITORY_TOKEN -u AVC_UPSTREAM_TOKEN "$venv_python" -I -m pip \
+          --isolated install --disable-pip-version-check --only-binary=:all: \
+          -r "$GITHUB_ACTION_PATH/requirements.txt"
+        "$venv_python" -Es "$GITHUB_ACTION_PATH/action_version_check.py"
